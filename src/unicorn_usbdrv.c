@@ -449,14 +449,19 @@ static void StartAtmUsXfer(struct unicorn_dev *dev,int turn,unsigned char *buffe
 		fill_isoc_urb(urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT),
 				buffer, length,  dev->usb_dev->epmaxpacketout[EP_ATM_ISO_OUT], 
 				AtmUsXferComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 		//Changes for kernel 2.6.13
 		fill_isoc_urb(urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT),
 				buffer, length,
 				usb_maxpacket(dev->usb_dev,
 					usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT),1), 
 				AtmUsXferComplete, dev);
-
+#else
+        fill_isoc_urb(urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT),
+				buffer, length,
+				usb_maxpacket(dev->usb_dev,
+					usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT)), 
+				AtmUsXferComplete, dev);
 
 #endif
 	} else {
@@ -621,8 +626,10 @@ static void atm_start_rcv(struct unicorn_dev *dev)
 		case 2 :
 #if  (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,10))
         		chk_size = dev->usb_dev->epmaxpacketin[EP_ATM_ISO_IN];
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
         		chk_size = usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN),0);
+#else
+                chk_size = usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN));
 #endif
 			if(chk_size == 56) {
 				size = ATM_DS_CELLS_PER_PKT_AS2_56*USB_CELL_LENGTH*READ_BULK_PACKETS_PER_URB;
@@ -653,8 +660,10 @@ static void atm_start_rcv(struct unicorn_dev *dev)
 
 #if  (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,10))
 	packet_size = dev->usb_dev->epmaxpacketin[EP_ATM_ISO_IN];
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 	packet_size = usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN),0);
+#else
+    packet_size = usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN));
 #endif
 
 	PRINT_INFO("buffer=%p,size=%d,packet_size=%d,num_reads=%d\n",
@@ -2150,7 +2159,7 @@ ST_STATUS USB_init(
 	ep_setting->ep5_size = dev->usb_dev->epmaxpacketin[EP_ATM_ISO_IN];
 	ep_setting->ep6_size = dev->usb_dev->epmaxpacketout[EP_OBC_INT_OUT];
 	ep_setting->ep7_size = dev->usb_dev->epmaxpacketin[EP_OBC_INT_IN];
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 	ep_setting->ep1_size = usb_maxpacket(dev->usb_dev, usb_rcvintpipe(dev->usb_dev,EP_INTERRUPT),0);
 	ep_setting->ep2_size = usb_maxpacket(dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT),1);
 	ep_setting->ep3_size = usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,EP_OBC_ISO_IN),0);
@@ -2158,7 +2167,14 @@ ST_STATUS USB_init(
 	ep_setting->ep5_size = usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN),0);
 	ep_setting->ep6_size = usb_maxpacket(dev->usb_dev, usb_sndintpipe(dev->usb_dev,EP_OBC_INT_OUT),1);
 	ep_setting->ep7_size = usb_maxpacket(dev->usb_dev, usb_rcvintpipe(dev->usb_dev,EP_OBC_INT_IN),0);
-
+#else
+    ep_setting->ep1_size = usb_maxpacket(dev->usb_dev, usb_rcvintpipe(dev->usb_dev,EP_INTERRUPT));
+	ep_setting->ep2_size = usb_maxpacket(dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT));
+	ep_setting->ep3_size = usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,EP_OBC_ISO_IN));
+	ep_setting->ep4_size = usb_maxpacket(dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_ATM_ISO_OUT));
+	ep_setting->ep5_size = usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,EP_ATM_ISO_IN));
+	ep_setting->ep6_size = usb_maxpacket(dev->usb_dev, usb_sndintpipe(dev->usb_dev,EP_OBC_INT_OUT));
+	ep_setting->ep7_size = usb_maxpacket(dev->usb_dev, usb_rcvintpipe(dev->usb_dev,EP_OBC_INT_IN));
 
 #endif
 	DBG(USB_D,"max packet size,ep0 %d,ep1 %d,ep2 %d,ep3 %d,ep4 %d,ep5 %d,ep6 %d,ep7 %d\n",
@@ -2279,11 +2295,17 @@ ST_STATUS USB_S_Write(T_ShortWrite *dataPtr,T_EpOut ep_out)
 						dataPtr->cmdBuff, dataPtr->frameSize*sizeof(WORD),
 						dev->usb_dev->epmaxpacketout[EP_OBC_ISO_OUT], 
 						ObcWriteIsocComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 				fill_isoc_urb(urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT),
 						dataPtr->cmdBuff, dataPtr->frameSize*sizeof(WORD),
 						usb_maxpacket(dev->usb_dev,
 							usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT),1), 
+						ObcWriteIsocComplete, dev);
+#else
+                fill_isoc_urb(urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT),
+						dataPtr->cmdBuff, dataPtr->frameSize*sizeof(WORD),
+						usb_maxpacket(dev->usb_dev,
+							usb_sndisocpipe(dev->usb_dev,EP_OBC_ISO_OUT)), 
 						ObcWriteIsocComplete, dev);
 
 #endif
@@ -2470,10 +2492,15 @@ ST_STATUS USB_S_Read(T_ShortRead *dataPtr,T_EpOut ep_out,T_EpIn ep_in)
 				fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
 						ptr, dataPtr->rdSize*sizeof(WORD),
 						(dev->usb_dev->epmaxpacketin[ep]), ObcReadIsocComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 				fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
 						ptr, dataPtr->rdSize*sizeof(WORD),
 						usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,ep),0),
+						ObcReadIsocComplete, dev);
+#else
+                fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
+						ptr, dataPtr->rdSize*sizeof(WORD),
+						usb_maxpacket(dev->usb_dev,usb_rcvisocpipe(dev->usb_dev,ep)),
 						ObcReadIsocComplete, dev);
 
 #endif
@@ -2507,10 +2534,15 @@ ST_STATUS USB_S_Read(T_ShortRead *dataPtr,T_EpOut ep_out,T_EpIn ep_in)
 				fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
 						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
 						(dev->usb_dev->epmaxpacketout[ep]), ObcWriteIsocComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 				fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
 						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
 						usb_maxpacket(dev->usb_dev,usb_sndisocpipe(dev->usb_dev,ep),1),
+						ObcWriteIsocComplete, dev);
+#else
+                fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
+						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
+						usb_maxpacket(dev->usb_dev,usb_sndisocpipe(dev->usb_dev,ep)),
 						ObcWriteIsocComplete, dev);
 
 #endif
@@ -2643,10 +2675,15 @@ ST_STATUS USB_L_Read(T_LongRead *dataPtr,T_EpOut ep_out,T_EpIn ep_in)
 				fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
 						ptr, dataPtr->rdSize*sizeof(WORD), (dev->usb_dev->epmaxpacketin[ep]), 
 						ObcReadIsocComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 				fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
 						ptr, dataPtr->rdSize*sizeof(WORD),
 						usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),0),
+						ObcReadIsocComplete, dev);
+#else
+                fill_isoc_urb(read_urb, dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep),
+						ptr, dataPtr->rdSize*sizeof(WORD),
+						usb_maxpacket(dev->usb_dev, usb_rcvisocpipe(dev->usb_dev,ep)),
 						ObcReadIsocComplete, dev);
 
 #endif
@@ -2678,10 +2715,15 @@ ST_STATUS USB_L_Read(T_LongRead *dataPtr,T_EpOut ep_out,T_EpIn ep_in)
 				fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
 						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
 						(dev->usb_dev->epmaxpacketout[ep]), ObcWriteIsocComplete, dev);
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 				fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
 						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
 						usb_maxpacket(dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),1),
+						ObcWriteIsocComplete, dev);
+#else
+                fill_isoc_urb(write_urb, dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep),
+						dataPtr->cmdBuff, dataPtr->wrSize*sizeof(WORD),
+						usb_maxpacket(dev->usb_dev, usb_sndisocpipe(dev->usb_dev,ep)),
 						ObcWriteIsocComplete, dev);
 
 #endif

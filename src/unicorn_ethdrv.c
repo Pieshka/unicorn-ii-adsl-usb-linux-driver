@@ -35,11 +35,15 @@
 #include <linux/atmioc.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#undef crc32
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <linux/if_pppox.h>
 #include <linux/ip.h>
 #include <linux/proc_fs.h>
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+#include <linux/seq_file.h>
+#endif   
 #include "../include/types.h"
 #include "../include/amas.h"
 #include "../include/amsw_ant.h"
@@ -84,6 +88,14 @@ const unsigned char PPPOA_LLC_ENCAPS[4] =
 #define POLL_TIME 4
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+struct legacy_timer_emu {
+	struct timer_list t;
+	void (*function)(unsigned long);
+	unsigned long data;
+};
+#endif
+
 /*
  *	This structure defines an ethernet arp header.
  */
@@ -123,7 +135,11 @@ typedef struct unicorn_ethdrv {
 	int vci;
 	/* traffic shaping */
 	int link_rate;
-	struct timer_list timer;    
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+    struct legacy_timer_emu timer;
+#else
+	struct timer_list timer;
+#endif   
 	int ms_counter;
 	int max_cell_counter;  // counts max number of cells/sec for traffic shaping
 	struct proc_dir_entry *proc_dir_entry;
@@ -178,8 +194,51 @@ static struct net_device_stats *unicorn_eth_stats(struct net_device *eth_dev);
 static int unicorn_eth_ioctl(struct net_device *eth_dev, struct ifreq *rq, int cmd);
 static int unicorn_eth_change_mtu(struct net_device *eth_dev, int new_mtu);
 static void unicorn_eth_set_multicast(struct net_device *eth_dev);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static void unicorn_eth_tx_timeout(struct net_device *eth_dev, unsigned int txqueue);
+#else
 static void unicorn_eth_tx_timeout(struct net_device *eth_dev);
+#endif
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+static int unicorn_eth_proc_read (struct seq_file *m, void *v);
+#else
 static int unicorn_eth_proc_read (char *page, char **start, off_t off, int count, int *eof, void *data);
+#endif 
+
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+//======================================================================
+// Timer compatibility code
+//======================================================================
+static void legacy_timer_emu_func(struct timer_list *t)
+{
+	struct legacy_timer_emu *lt = from_timer(lt, t, t);
+	lt->function(lt->data);
+}
+#endif
+
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+static int unicorn_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, unicorn_eth_proc_read, NULL);
+}
+
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static const struct proc_ops unicorn_proc_ops = {
+	.proc_open	= unicorn_proc_open,
+	.proc_read	= seq_read,
+	.proc_lseek	= seq_lseek,
+	.proc_release = seq_release,
+};
+#else
+static const struct file_operations unicorn_proc_fops = {
+	.open		= unicorn_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+#endif
+#endif 
 
 const char *get_adsl_status_string(ADSL_STATUS status)
 {
@@ -236,7 +295,22 @@ inline unsigned char get_hex_digit(const char digit[2])
 static void 
 unicorn_set_mac(struct net_device *eth_dev, const char *mac) 
 {	
-	if ((mac != NULL) && (strlen(mac) >= (ETH_ALEN*2))) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))
+    u8 macaddr[ETH_ALEN];
+    if ((mac != NULL) && (strlen(mac) >= (ETH_ALEN*2))) {
+		int i;
+		for (i=0; i < ETH_ALEN; i++) {
+			macaddr[i] = get_hex_digit(&mac[i*2]);
+		}
+		macaddr[0] &= ~0x01; // make sure it is not a broadcast address
+	} else {
+		/* Generate random Ethernet address.  */
+		macaddr[0] = 0x00;
+		get_random_bytes(&macaddr[1],ETH_ALEN-1);
+	}
+	eth_hw_addr_set(eth_dev, macaddr);
+#else
+    if ((mac != NULL) && (strlen(mac) >= (ETH_ALEN*2))) {
 		int i;
 		for (i=0; i < ETH_ALEN; i++) {
 			eth_dev->dev_addr[i] = get_hex_digit(&mac[i*2]);
@@ -247,6 +321,7 @@ unicorn_set_mac(struct net_device *eth_dev, const char *mac)
 		eth_dev->dev_addr[0] = 0x00;
 		get_random_bytes(&eth_dev->dev_addr[1],ETH_ALEN-1);
 	}
+#endif 
 	INFO("MAC=%02x:%02x:%02x:%02x:%02x:%02x\n",
 	    eth_dev->dev_addr[0],eth_dev->dev_addr[1],eth_dev->dev_addr[2],
 	    eth_dev->dev_addr[3],eth_dev->dev_addr[4],eth_dev->dev_addr[5]);
@@ -295,6 +370,26 @@ static int get_link_rate(struct unicorn_ethdrv *drv)
 	return link_rate;
 }
 
+#if defined (LINUX_VERSION_CODE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+static int unicorn_eth_proc_read (struct seq_file *m, void *v)
+{
+	struct unicorn_ethdrv *drv = (struct unicorn_ethdrv *)m->private;
+	struct net_device *eth_dev = drv->dev;
+	AMSW_ModemState modemstate = get_modemstate(drv);
+	get_link_rate(drv);
+
+	seq_printf(m, "ADSL: status %s, modem state %s, US rate %ldKbits/s, DS rate %ldKbits/s\n", 
+		     get_adsl_status_string(drv->adsl_status),get_modemstate_string(modemstate),
+			       drv->upstream_rate,drv->downstream_rate);
+	seq_printf(m,"Current speed: US %ldKbits/s,DS %ldKbits/s\n",
+		     drv->curr_us_rate,drv->curr_ds_rate);
+	seq_printf(m, "Bridged: %02x:%02x:%02x:%02x:%02x:%02x\n",
+		     eth_dev->dev_addr[0], eth_dev->dev_addr[1], eth_dev->dev_addr[2], 
+		     eth_dev->dev_addr[3], eth_dev->dev_addr[4], eth_dev->dev_addr[5]);
+
+    return 0;
+}
+#else
 static int unicorn_eth_proc_read (char *page, char **start, off_t off, int count, int *eof, void *data)
 {
 	struct unicorn_ethdrv *drv = (struct unicorn_ethdrv *)data;
@@ -328,6 +423,7 @@ static int unicorn_eth_proc_read (char *page, char **start, off_t off, int count
     *start = page + off;
     return size;
 }
+#endif 
 
 static int skb_add_header(struct sk_buff *skb,const unsigned char *header,int len)
 {
@@ -794,8 +890,11 @@ static void rcv_aal5(struct unicorn_ethdrv *drv,unsigned char *cell)
 		}
 	}
 	DUMP_PACKET(DATA_D,skb->data,skb->len);
-
-	drv->dev->last_rx = jiffies;
+	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0))
+#else
+    drv->dev->last_rx = jiffies;
+#endif 
 	skb->protocol = eth_type_trans(skb,drv->dev);
 	DBG(ATM_D,"skb->len=%d,skb->protocol=%04x\n",skb->len,htons(skb->protocol));
 	netif_rx(skb);
@@ -869,8 +968,13 @@ static void unicorn_poll_data(unsigned long context)
 	}
 
  restart:
-	drv->timer.expires = ((POLL_TIME*HZ)/1000) + jiffies;
-	add_timer(&drv->timer);	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+    drv->timer.t.expires = ((POLL_TIME*HZ)/1000) + jiffies;
+	add_timer(&drv->timer.t);
+#else
+    drv->timer.expires = ((POLL_TIME*HZ)/1000) + jiffies;
+	add_timer(&drv->timer);
+#endif 
 }
 
 
@@ -1051,7 +1155,11 @@ static int unicorn_eth_send(struct sk_buff *skb, struct net_device *eth_dev)
 
 	// put skb on transmit queue 
 	skb_queue_tail(&drv->tx_q, skb);
-	eth_dev->trans_start = jiffies;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0))
+    dev_trans_start(eth_dev);
+#else
+    eth_dev->trans_start = jiffies;
+#endif 
 	return 0;
 
 fail:
@@ -1075,19 +1183,33 @@ void start_poll_timer(struct unicorn_ethdrv *drv)
 	}
 	
 	// start send and receive poll timer
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+	timer_setup(&drv->timer.t, legacy_timer_emu_func, 0);
+#else
 	init_timer(&drv->timer);
+#endif
 	
 	drv->timer.data = (unsigned long)drv;
 	drv->timer.function = unicorn_poll_data;
-	drv->timer.expires = ((POLL_TIME*HZ)/1000) + jiffies;
 	
-	add_timer(&drv->timer);	 
+	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+    drv->timer.t.expires = ((POLL_TIME*HZ)/1000) + jiffies;
+	add_timer(&drv->timer.t);
+#else
+    drv->timer.expires = ((POLL_TIME*HZ)/1000) + jiffies;
+	add_timer(&drv->timer);
+#endif 
 }
 
 static void stop_poll_timer(struct unicorn_ethdrv *drv)
 {
 	// stop timer
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+	del_timer(&drv->timer.t);
+#else
 	del_timer(&drv->timer);
+#endif
 	// free all buffers in transmit queues
 	purge_tx_q(drv);
 }
@@ -1115,7 +1237,14 @@ static int unicorn_eth_open(struct net_device *eth_dev)
 	//if (atm_proc_root) atm_proc_root->owner=THIS_MODULE;
 #endif	
 	if (atm_proc_root) {
-		drv->proc_dir_entry = create_proc_read_entry("UNICORN:0",0,atm_proc_root,unicorn_eth_proc_read,drv);
+		
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+        drv->proc_dir_entry = proc_create("UNICORN:0",0,atm_proc_root,&unicorn_proc_ops);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
+        drv->proc_dir_entry = proc_create("UNICORN:0",0,atm_proc_root,&unicorn_proc_fops);
+#else
+        drv->proc_dir_entry = create_proc_read_entry("UNICORN:0",0,atm_proc_root,unicorn_eth_proc_read,drv);
+#endif 
 		if (drv->proc_dir_entry) {
 			//drv->proc_dir_entry->owner = THIS_MODULE;
 		} else {
@@ -1370,11 +1499,20 @@ unicorn_eth_set_multicast(struct net_device *eth_dev)
 {
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static void 
+unicorn_eth_tx_timeout(struct net_device *eth_dev, unsigned int txqueue)
+{
+    DBG(ATM_D,"\n");
+}
+#else
 static void 
 unicorn_eth_tx_timeout(struct net_device *eth_dev)
 {
 	DBG(ATM_D,"\n");
 }
+#endif
+
 
 module_param(if_name, charp, 0);
 module_param(mac_address, charp, 0);

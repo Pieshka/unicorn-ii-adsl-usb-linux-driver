@@ -3,7 +3,7 @@
 
 #ifdef UNICORN_COMMON
 #ifndef UNICORN_WIN
-#include "USB_ProtocolCreator.h"
+#include "usb_protocolcreator.h"
 #endif
 #endif
                                    

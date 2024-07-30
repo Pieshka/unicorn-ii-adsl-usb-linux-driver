@@ -76,9 +76,12 @@ T_EpOut selectBestEpOut(WORD *epOutSize, WORD requestedSize)
 #if  (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,10))
 	ep2_size = ((unicorn_usb_dev.usb_dev->epmaxpacketout[EP_OBC_ISO_OUT]) / 2);  //bytes to Words
 	ep6_size = ((unicorn_usb_dev.usb_dev->epmaxpacketout[EP_OBC_INT_OUT]) / 2);  //bytes to Words
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 	ep2_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev,usb_sndisocpipe(unicorn_usb_dev.usb_dev, EP_OBC_ISO_OUT),1)) / 2);  //bytes to Words
 	ep6_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev,usb_sndintpipe(unicorn_usb_dev.usb_dev,EP_OBC_INT_OUT),1))  / 2);  //bytes to Words
+#else
+    ep2_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev,usb_sndisocpipe(unicorn_usb_dev.usb_dev, EP_OBC_ISO_OUT))) / 2);  //bytes to Words
+	ep6_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev,usb_sndintpipe(unicorn_usb_dev.usb_dev,EP_OBC_INT_OUT)))  / 2);  //bytes to Words
 #endif
 
 	if(requestedSize <= ep6_size) 
@@ -104,10 +107,12 @@ T_EpIn  selectBestEpIn(WORD requestedSize)
 #if  (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,10))
 	ep3_size = ((unicorn_usb_dev.usb_dev->epmaxpacketout[EP_OBC_ISO_IN]) / 2);  //bytes to Words
 	ep7_size = ((unicorn_usb_dev.usb_dev->epmaxpacketout[EP_OBC_INT_IN]) / 2);  //bytes to Words
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0))
 	ep3_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev, usb_rcvisocpipe(unicorn_usb_dev.usb_dev, EP_OBC_ISO_IN),0)) / 2);  //bytes to Words
 	ep7_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev, usb_rcvintpipe(unicorn_usb_dev.usb_dev,  EP_OBC_INT_IN),0)) / 2);  //bytes to Words
-
+#else
+    ep3_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev, usb_rcvisocpipe(unicorn_usb_dev.usb_dev, EP_OBC_ISO_IN))) / 2);  //bytes to Words
+	ep7_size = ((usb_maxpacket(unicorn_usb_dev.usb_dev, usb_rcvintpipe(unicorn_usb_dev.usb_dev,  EP_OBC_INT_IN))) / 2);  //bytes to Words
 #endif
 
 	if(requestedSize <= 8)

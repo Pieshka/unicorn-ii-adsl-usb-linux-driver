@@ -12,12 +12,12 @@
 // of the ADSL Taurus driver
 //----------------------------------------------------------------------
 
-#include "../include/Typesdrv.h"
 #include "../include/C-interface.h"
 
 AdslDeviceInterface *adslDeviceInterface;
 
 /***************************************WRITE SINGLE****************************************/
+
 myclass::myclass()
 {
 }
@@ -30,7 +30,7 @@ myclass::~myclass()
 extern "C" {
 #endif
 
-class myclass *myclassobj;
+myclass *myclassobj;
 void createclassobject(void)
 {
 	myclassobj = new myclass();

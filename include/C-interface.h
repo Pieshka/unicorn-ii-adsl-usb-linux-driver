@@ -1,16 +1,16 @@
 #ifndef _CINTERFACE_H
 #define _CINTERFACE_H
 
-
+#include "Typesdrv.h"
 #include "adsldeviceitf.h"
 
-class myclass:public AdslDeviceInterface
+class myclass : public AdslDeviceInterface
 {
 	public:
-        myclass();
-	 	virtual ~myclass();
-		
-        virtual ST_STATUS readSingle(WORD address, WORD* data) ;
+        	myclass();
+		virtual ~myclass();
+
+        	virtual ST_STATUS readSingle(WORD address, WORD* data) ;
 		virtual ST_STATUS readBurst(WORD startAddress, WORD burstSize, WORD* data);
 		virtual ST_STATUS readBlock(WORD* addresses, WORD blockSize, WORD* data) ;
 		virtual ST_STATUS readMessage(WORD address, WORD* data, WORD* returnSize, WORD addressCheck, WORD bitPositionCheck, WORD maxReadSize) ;
