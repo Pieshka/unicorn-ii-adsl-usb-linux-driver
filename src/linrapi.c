@@ -1086,8 +1086,6 @@ void xt_waitexit(void)
 	while (atomic_read(&running_tasks) && count--) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,14,0) 
 	    current->__state = TASK_INTERRUPTIBLE;
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0)
-	    current->__state = TASK_INTERRUPTIBLE;
 #else
 	    current->state = TASK_INTERRUPTIBLE;
 #endif
@@ -1661,8 +1659,6 @@ DWORD xtm_wkafter(DWORD ms)
 	if (ticks > 0) {
 		// sleep
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,14,0) 
-	    current->__state = TASK_INTERRUPTIBLE;
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,18,0)
 	    current->__state = TASK_INTERRUPTIBLE;
 #else
 	    current->state = TASK_INTERRUPTIBLE;

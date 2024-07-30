@@ -35,7 +35,6 @@
 #include <linux/atmioc.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
-#undef crc32
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <linux/if_pppox.h>
@@ -49,6 +48,7 @@
 #include "../include/amsw_ant.h"
 #include "../include/amsw_init.h"
 #include "../include/amsw_intf_types.h"
+#undef crc32
 #include "../include/crc.h"
 #include "../include/unicorn.h"
 #include "../include/debug.h"
